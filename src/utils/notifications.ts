@@ -1,33 +1,107 @@
 import { PlanItem } from '../types';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
-export function requestNotificationPermission(): Promise<boolean> {
+export async function requestNotificationPermission(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const result = await LocalNotifications.requestPermissions();
+      return result.display === 'granted';
+    } catch (e) {
+      console.warn('Native request permission error:', e);
+      return false;
+    }
+  }
+
+  // Fallback to web
   if (!('Notification' in window)) {
-    return Promise.resolve(false);
+    return false;
   }
-
   if (Notification.permission === 'granted') {
-    return Promise.resolve(true);
+    return true;
   }
-
   if (Notification.permission !== 'denied') {
-    return Notification.requestPermission().then((permission) => permission === 'granted');
+    const permission = await Notification.requestPermission();
+    return permission === 'granted';
   }
-
-  return Promise.resolve(false);
+  return false;
 }
 
 export function sendDesktopNotification(title: string, body: string, icon?: string) {
-  if ('Notification' in window && Notification.permission === 'granted') {
+  // Web fallback for actively open app desktop notifications
+  if (!Capacitor.isNativePlatform() && 'Notification' in window && Notification.permission === 'granted') {
     try {
       new Notification(title, {
         body,
         icon: icon || '/favicon.ico',
-        tag: 'android-reminder-' + Date.now(),
+        tag: 'web-reminder-' + Date.now(),
         requireInteraction: true,
       });
     } catch (e) {
       console.warn('Desktop notification error:', e);
     }
+  }
+}
+
+// Generate a numeric ID from a string to use as Capacitor Notification ID
+function hashStringToInt(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
+}
+
+export async function syncNativeNotifications(plans: PlanItem[]) {
+  if (!Capacitor.isNativePlatform()) {
+    return; // Only sync on Native Android/iOS
+  }
+
+  try {
+    // 1. Cancel all previously scheduled notifications
+    const pending = await LocalNotifications.getPending();
+    if (pending.notifications.length > 0) {
+      await LocalNotifications.cancel({ notifications: pending.notifications });
+    }
+
+    // 2. Schedule new notifications
+    const now = new Date().getTime();
+    const notificationsToSchedule = [];
+
+    for (const plan of plans) {
+      if (plan.completed || !plan.reminderEnabled || plan.reminderTriggered) continue;
+
+      let scheduleTime: Date | null = null;
+      if (plan.reminderSnoozedUntil) {
+        scheduleTime = new Date(plan.reminderSnoozedUntil);
+      } else if (plan.dueDate && plan.dueTime) {
+        const [year, month, day] = plan.dueDate.split('-').map(Number);
+        const [hours, minutes] = plan.dueTime.split(':').map(Number);
+        scheduleTime = new Date(year, month - 1, day, hours, minutes, 0, 0);
+      }
+
+      if (scheduleTime && scheduleTime.getTime() > now) {
+        notificationsToSchedule.push({
+          id: hashStringToInt(plan.id),
+          title: `⏰ 计划提醒到点: ${plan.title}`,
+          body: `时间: ${plan.dueTime} | 标签: ${plan.priority}`,
+          schedule: { at: scheduleTime },
+          sound: 'beep.wav',
+          smallIcon: 'ic_launcher_round', 
+          actionTypeId: '',
+          extra: { planId: plan.id }
+        });
+      }
+    }
+
+    if (notificationsToSchedule.length > 0) {
+      await LocalNotifications.schedule({ notifications: notificationsToSchedule });
+      console.log('Scheduled native notifications:', notificationsToSchedule.length);
+    }
+  } catch (e) {
+    console.warn('Failed to sync native notifications', e);
   }
 }
 
@@ -37,13 +111,11 @@ export function isPlanDueNow(plan: PlanItem, now = new Date()): boolean {
     return false;
   }
 
-  // Handle Snoozed time first if present
   if (plan.reminderSnoozedUntil) {
     const snoozedTime = new Date(plan.reminderSnoozedUntil).getTime();
     return now.getTime() >= snoozedTime;
   }
 
-  // Check due date & time
   if (!plan.dueDate || !plan.dueTime) return false;
 
   const [year, month, day] = plan.dueDate.split('-').map(Number);
@@ -51,9 +123,8 @@ export function isPlanDueNow(plan: PlanItem, now = new Date()): boolean {
 
   const planDateTime = new Date(year, month - 1, day, hours, minutes, 0, 0);
 
-  // Trigger if current time is equal to or slightly past the due time (within a reasonable window, e.g., 2 minutes past)
   const diffMs = now.getTime() - planDateTime.getTime();
-  return diffMs >= 0 && diffMs <= 1000 * 60 * 60 * 24; // Up to 24h past if not marked triggered
+  return diffMs >= 0 && diffMs <= 1000 * 60 * 60 * 24;
 }
 
 export function formatFriendlyDate(dueDateStr: string, dueTimeStr?: string): { text: string; isOverdue: boolean; isToday: boolean } {
@@ -77,7 +148,6 @@ export function formatFriendlyDate(dueDateStr: string, dueTimeStr?: string): { t
     text = `今天${timePart}`;
     isToday = true;
 
-    // Check if time is past today
     if (dueTimeStr) {
       const [h, min] = dueTimeStr.split(':').map(Number);
       const targetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, min);

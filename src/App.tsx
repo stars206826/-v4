@@ -17,7 +17,7 @@ import { AlarmModal } from './components/AlarmModal';
 import { StatsDrawer } from './components/StatsDrawer';
 import { BottomNav } from './components/BottomNav';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
-import { isPlanDueNow, sendDesktopNotification } from './utils/notifications';
+import { isPlanDueNow, sendDesktopNotification, syncNativeNotifications } from './utils/notifications';
 import {
   Plus,
   Filter,
@@ -54,6 +54,7 @@ export default function App() {
   React.useEffect(() => {
     try {
       localStorage.setItem('android_plan_reminders_v1', JSON.stringify(plans));
+      syncNativeNotifications(plans);
     } catch (e) {
       console.warn('LocalStorage save error:', e);
     }
