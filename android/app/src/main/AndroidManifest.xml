@@ -24,7 +24,7 @@
 
         </activity>
 
-        <!-- Desktop Pop-up Window Dialog Activity -->
+        <!-- Desktop Pop-up Window Dialog Activity (Fallback) -->
         <activity
             android:name=".AlarmAlertActivity"
             android:theme="@style/AppTheme.DialogAlert"
@@ -33,6 +33,12 @@
             android:taskAffinity=""
             android:showWhenLocked="true"
             android:turnScreenOn="true"
+            android:exported="false" />
+
+        <!-- Floating Window Service -->
+        <service
+            android:name=".AlarmFloatingService"
+            android:enabled="true"
             android:exported="false" />
 
         <!-- Native Alarm Receiver for background notifications -->
