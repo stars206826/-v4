@@ -7,9 +7,6 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.media.AudioAttributes;
-import android.media.RingtoneManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
 import android.util.Log;
@@ -18,20 +15,19 @@ import androidx.core.app.NotificationCompat;
 
 public class AlarmReceiver extends BroadcastReceiver {
 
-    public static final String CHANNEL_ID = "plan_reminder_channel";
+    public static final String CHANNEL_ID = "plan_reminder_silent_channel";
     private static final String TAG = "AlarmReceiver";
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        Log.d(TAG, "AlarmReceiver onReceive triggered!");
+        Log.d(TAG, "AlarmReceiver triggered on desktop!");
 
-        // Acquire a wake lock to ensure the device stays awake long enough to show the notification
         PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         PowerManager.WakeLock wakeLock = powerManager.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "aistudio:alarm_wakelock"
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "aistudio:desktop_popup_wakelock"
         );
-        wakeLock.acquire(10 * 1000L); // 10 seconds
+        wakeLock.acquire(15 * 1000L); // 15 seconds
 
         try {
             String title = intent.getStringExtra("title");
@@ -41,96 +37,82 @@ public class AlarmReceiver extends BroadcastReceiver {
             if (title == null) title = "⏰ 计划提醒";
             if (body == null) body = "您有一个待办计划到期了";
 
-            createNotificationChannel(context);
-            showNotification(context, notifId, title, body);
+            // 1. Launch the Desktop Pop-up Window Activity immediately (Silent)
+            Intent alertIntent = new Intent(context, AlarmAlertActivity.class);
+            alertIntent.putExtra("title", title);
+            alertIntent.putExtra("body", body);
+            alertIntent.putExtra("notifId", notifId);
+            alertIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            context.startActivity(alertIntent);
+
+            // 2. Also post a SILENT notification as backup in notification shade
+            createSilentNotificationChannel(context);
+            showSilentNotification(context, notifId, title, body);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error popping up alarm alert activity", e);
         } finally {
-            wakeLock.release();
+            if (wakeLock.isHeld()) {
+                wakeLock.release();
+            }
         }
     }
 
-    private void createNotificationChannel(Context context) {
+    private void createSilentNotificationChannel(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager manager = context.getSystemService(NotificationManager.class);
-
-            // Delete old channel if exists to refresh settings
             if (manager.getNotificationChannel(CHANNEL_ID) != null) {
-                // Channel already exists, keep it
                 return;
-            }
-
-            Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-            if (alarmSound == null) {
-                alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
             }
 
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "计划提醒",
+                    "静音桌面提醒",
                     NotificationManager.IMPORTANCE_HIGH
             );
-            channel.setDescription("日程到期时的定时提醒消息");
+            channel.setDescription("到期时的静音桌面弹窗提醒");
             channel.enableLights(true);
             channel.setLightColor(0xFFC86D51);
-            channel.enableVibration(true);
-            channel.setVibrationPattern(new long[]{0, 500, 200, 500, 200, 500});
+            channel.setSound(null, null); // Completely silent as requested
+            channel.enableVibration(false); // Silent
             channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-            channel.setBypassDnd(true);
-
-            AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build();
-            channel.setSound(alarmSound, audioAttributes);
 
             manager.createNotificationChannel(channel);
-            Log.d(TAG, "Notification channel created: " + CHANNEL_ID);
         }
     }
 
-    private void showNotification(Context context, int notifId, String title, String body) {
+    private void showSilentNotification(Context context, int notifId, String title, String body) {
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 
-        // Create intent to open the app when notification is tapped
-        Intent launchIntent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        Intent alertIntent = new Intent(context, AlarmAlertActivity.class);
+        alertIntent.putExtra("title", title);
+        alertIntent.putExtra("body", body);
+        alertIntent.putExtra("notifId", notifId);
+        alertIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
         PendingIntent contentIntent = PendingIntent.getActivity(
                 context,
                 notifId,
-                launchIntent,
+                alertIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
-
-        Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-        if (alarmSound == null) {
-            alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        }
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
                 .setContentTitle(title)
                 .setContentText(body)
-                .setStyle(new NotificationCompat.BigTextStyle()
-                        .bigText(body)
-                        .setBigContentTitle(title)
-                        .setSummaryText("智时日程"))
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setSound(alarmSound)
-                .setVibrate(new long[]{0, 500, 200, 500, 200, 500})
+                .setSound(null) // Silent
+                .setVibrate(null) // Silent
                 .setAutoCancel(true)
                 .setContentIntent(contentIntent)
-                .setDefaults(NotificationCompat.DEFAULT_LIGHTS)
-                .setFullScreenIntent(contentIntent, true)  // Full-screen intent for heads-up display
-                .setOngoing(false);
+                .setFullScreenIntent(contentIntent, true); // Heads-up / Pop-up window
 
         manager.notify(notifId, builder.build());
-        Log.d(TAG, "Notification shown: " + notifId + " - " + title);
     }
 
-    /**
-     * Schedule an alarm via Android's AlarmManager.
-     * This will fire even if the app is killed.
-     */
     public static void scheduleAlarm(Context context, int notifId, String title, String body, long triggerAtMillis) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
 
@@ -146,23 +128,17 @@ public class AlarmReceiver extends BroadcastReceiver {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        // Use setAlarmClock for maximum reliability - this creates a visible alarm
-        // and is NOT affected by battery optimization or Doze mode
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             AlarmManager.AlarmClockInfo alarmClockInfo = new AlarmManager.AlarmClockInfo(
                     triggerAtMillis,
                     pendingIntent
             );
             alarmManager.setAlarmClock(alarmClockInfo, pendingIntent);
-            Log.d(TAG, "Alarm scheduled (setAlarmClock): id=" + notifId + " at=" + triggerAtMillis);
         } else {
             alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
         }
     }
 
-    /**
-     * Cancel a previously scheduled alarm.
-     */
     public static void cancelAlarm(Context context, int notifId) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         Intent intent = new Intent(context, AlarmReceiver.class);
@@ -173,6 +149,5 @@ public class AlarmReceiver extends BroadcastReceiver {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
         alarmManager.cancel(pendingIntent);
-        Log.d(TAG, "Alarm cancelled: id=" + notifId);
     }
 }

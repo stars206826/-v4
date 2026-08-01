@@ -24,6 +24,17 @@
 
         </activity>
 
+        <!-- Desktop Pop-up Window Dialog Activity -->
+        <activity
+            android:name=".AlarmAlertActivity"
+            android:theme="@style/AppTheme.DialogAlert"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:exported="false" />
+
         <!-- Native Alarm Receiver for background notifications -->
         <receiver
             android:name=".AlarmReceiver"
@@ -53,7 +64,7 @@
         </provider>
     </application>
 
-    <!-- Permissions -->
+    <!-- Permissions for Alarms, Notifications, and Desktop Floating Windows -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
@@ -62,4 +73,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.SYSTEM_OVERLAY_WINDOW" />
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
 </manifest>

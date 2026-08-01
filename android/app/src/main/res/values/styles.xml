@@ -22,4 +22,13 @@
         <item name="android:background">@drawable/splash</item>
         <item name="android:windowFullscreen">true</item>
     </style>
+
+    <style name="AppTheme.DialogAlert" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.6</item>
+    </style>
 </resources>
