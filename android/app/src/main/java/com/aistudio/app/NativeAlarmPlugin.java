@@ -8,6 +8,7 @@ import android.os.Build;
 import android.provider.Settings;
 import android.util.Log;
 import android.app.AlarmManager;
+import android.app.NotificationManager;
 import androidx.core.app.NotificationManagerCompat;
 
 import com.getcapacitor.JSObject;
