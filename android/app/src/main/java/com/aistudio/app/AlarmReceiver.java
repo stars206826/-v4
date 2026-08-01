@@ -116,12 +116,13 @@ public class AlarmReceiver extends BroadcastReceiver {
     public static void scheduleAlarm(Context context, int notifId, String title, String body, long triggerAtMillis) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
 
-        Intent intent = new Intent(context, AlarmReceiver.class);
+        Intent intent = new Intent(context, AlarmAlertActivity.class);
         intent.putExtra("title", title);
         intent.putExtra("body", body);
         intent.putExtra("notifId", notifId);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
 
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+        PendingIntent pendingIntent = PendingIntent.getActivity(
                 context,
                 notifId,
                 intent,
@@ -141,8 +142,8 @@ public class AlarmReceiver extends BroadcastReceiver {
 
     public static void cancelAlarm(Context context, int notifId) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        Intent intent = new Intent(context, AlarmReceiver.class);
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+        Intent intent = new Intent(context, AlarmAlertActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
                 context,
                 notifId,
                 intent,
