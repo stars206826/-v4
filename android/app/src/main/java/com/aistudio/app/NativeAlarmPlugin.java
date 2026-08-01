@@ -28,7 +28,8 @@ public class NativeAlarmPlugin extends Plugin {
             int notifId = call.getInt("notifId", 0);
             String title = call.getString("title", "⏰ 计划提醒");
             String body = call.getString("body", "您有一个待办计划到期了");
-            long triggerAt = (long) call.getDouble("triggerAt", 0);
+            Double triggerAtDouble = call.getDouble("triggerAt");
+            long triggerAt = triggerAtDouble != null ? triggerAtDouble.longValue() : 0L;
 
             if (triggerAt <= System.currentTimeMillis()) {
                 call.reject("triggerAt must be in the future");
