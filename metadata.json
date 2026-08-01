@@ -1,0 +1,6 @@
+{
+  "name": "安卓计划与提醒",
+  "description": "Android 风格的计划日程管理应用，支持日期时间设置、定时通知提醒、分类标签、重要性排序及日历视图。",
+  "requestFramePermissions": ["notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
