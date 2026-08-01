@@ -1,37 +1,58 @@
 import { PlanItem } from '../types';
-import { Capacitor } from '@capacitor/core';
-import { LocalNotifications } from '@capacitor/local-notifications';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+// Register our custom native alarm plugin
+interface NativeAlarmPlugin {
+  scheduleAlarm(options: { notifId: number; title: string; body: string; triggerAt: number }): Promise<{ success: boolean }>;
+  cancelAlarm(options: { notifId: number }): Promise<{ success: boolean }>;
+  cancelAllAlarms(): Promise<{ success: boolean; cancelled: number }>;
+  testNotification(): Promise<{ success: boolean; message: string }>;
+}
+
+const NativeAlarm = registerPlugin<NativeAlarmPlugin>('NativeAlarm');
+
+// Generate a stable numeric ID from a string
+function hashStringToInt(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  // Ensure positive and non-zero (Android notification ID 0 can cause issues)
+  return Math.abs(hash) || 1;
+}
 
 export async function requestNotificationPermission(): Promise<boolean> {
   if (Capacitor.isNativePlatform()) {
     try {
-      // Create high-importance channel on Android first
-      await LocalNotifications.createChannel({
-        id: 'default_reminders',
-        name: '计划日程提醒',
-        description: '日程到期时的定时提醒消息',
-        importance: 5, // High importance for heads-up banner & sound
-        visibility: 1, // Public on lockscreen
-        vibration: true,
-        lights: true,
-        lightColor: '#C86D51',
-      }).catch((err) => console.warn('Channel creation error:', err));
-
+      // On Android 13+, POST_NOTIFICATIONS is a runtime permission.
+      // Capacitor's core handles this, but we also send a test notification
+      // to force-create the channel and verify everything works.
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
       const result = await LocalNotifications.requestPermissions();
-      return result.display === 'granted';
+      const granted = result.display === 'granted';
+
+      if (granted) {
+        // Send a quick test to verify our native alarm pipeline works
+        try {
+          await NativeAlarm.testNotification();
+          console.log('Native alarm test scheduled successfully');
+        } catch (e) {
+          console.warn('Native alarm test failed:', e);
+        }
+      }
+
+      return granted;
     } catch (e) {
       console.warn('Native request permission error:', e);
       return false;
     }
   }
 
-  // Fallback to web
-  if (!('Notification' in window)) {
-    return false;
-  }
-  if (Notification.permission === 'granted') {
-    return true;
-  }
+  // Web fallback
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
   if (Notification.permission !== 'denied') {
     const permission = await Notification.requestPermission();
     return permission === 'granted';
@@ -40,7 +61,6 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 export function sendDesktopNotification(title: string, body: string, icon?: string) {
-  // Web fallback for actively open app desktop notifications
   if (!Capacitor.isNativePlatform() && 'Notification' in window && Notification.permission === 'granted') {
     try {
       new Notification(title, {
@@ -55,83 +75,62 @@ export function sendDesktopNotification(title: string, body: string, icon?: stri
   }
 }
 
-// Generate a numeric ID from a string to use as Capacitor Notification ID
-function hashStringToInt(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return Math.abs(hash);
-}
-
+/**
+ * Sync all plan reminders to native Android AlarmManager.
+ * Uses setAlarmClock() which is the MOST reliable method -
+ * it bypasses Doze mode, battery optimization, and works even when app is force-killed.
+ */
 export async function syncNativeNotifications(plans: PlanItem[]) {
-  if (!Capacitor.isNativePlatform()) {
-    return; // Only sync on Native Android/iOS
-  }
+  if (!Capacitor.isNativePlatform()) return;
 
   try {
-    // 1. Ensure channel exists
-    await LocalNotifications.createChannel({
-      id: 'default_reminders',
-      name: '计划日程提醒',
-      description: '日程到期时的定时提醒消息',
-      importance: 5,
-      visibility: 1,
-      vibration: true,
-      lights: true,
-      lightColor: '#C86D51',
-    }).catch(() => {});
+    // 1. Cancel all existing alarms
+    await NativeAlarm.cancelAllAlarms();
+    console.log('[syncNativeNotifications] Cancelled all existing alarms');
 
-    // 2. Cancel all previously scheduled notifications
-    const pending = await LocalNotifications.getPending();
-    if (pending.notifications.length > 0) {
-      await LocalNotifications.cancel({ notifications: pending.notifications });
-    }
-
-    // 3. Schedule new notifications
-    const now = new Date().getTime();
-    const notificationsToSchedule = [];
+    // 2. Schedule new alarms for upcoming plans
+    const now = Date.now();
+    let scheduled = 0;
 
     for (const plan of plans) {
-      if (plan.completed || !plan.reminderEnabled || plan.reminderTriggered) continue;
+      // Only schedule for incomplete plans with reminders enabled
+      if (plan.completed || !plan.reminderEnabled) continue;
+      // DO NOT check reminderTriggered here - native alarms are independent of in-app state
 
-      let scheduleTime: Date | null = null;
+      let triggerAt: number | null = null;
+
       if (plan.reminderSnoozedUntil) {
-        scheduleTime = new Date(plan.reminderSnoozedUntil);
+        triggerAt = new Date(plan.reminderSnoozedUntil).getTime();
       } else if (plan.dueDate && plan.dueTime) {
         const [year, month, day] = plan.dueDate.split('-').map(Number);
         const [hours, minutes] = plan.dueTime.split(':').map(Number);
-        scheduleTime = new Date(year, month - 1, day, hours, minutes, 0, 0);
+        triggerAt = new Date(year, month - 1, day, hours, minutes, 0, 0).getTime();
       }
 
-      if (scheduleTime && scheduleTime.getTime() > now) {
-        notificationsToSchedule.push({
-          id: hashStringToInt(plan.id),
-          title: `⏰ 计划提醒到点: ${plan.title}`,
-          body: `时间: ${plan.dueTime} | 优先级: ${plan.priority}`,
-          channelId: 'default_reminders',
-          schedule: { 
-            at: scheduleTime,
-            allowWhileIdle: true // Allow triggering during Android Doze mode / closed app
-          },
-          actionTypeId: '',
-          extra: { planId: plan.id }
-        });
+      // Only schedule future alarms
+      if (triggerAt && triggerAt > now) {
+        const notifId = hashStringToInt(plan.id);
+        const title = `⏰ ${plan.title}`;
+        const body = `📅 到期时间: ${plan.dueTime} · 优先级: ${plan.priority}`;
+
+        try {
+          await NativeAlarm.scheduleAlarm({ notifId, title, body, triggerAt });
+          scheduled++;
+          console.log(`[syncNativeNotifications] Scheduled: "${plan.title}" at ${new Date(triggerAt).toLocaleString()}, id=${notifId}`);
+        } catch (err) {
+          console.warn(`[syncNativeNotifications] Failed to schedule "${plan.title}":`, err);
+        }
       }
     }
 
-    if (notificationsToSchedule.length > 0) {
-      await LocalNotifications.schedule({ notifications: notificationsToSchedule });
-      console.log('Scheduled native notifications:', notificationsToSchedule.length);
-    }
+    console.log(`[syncNativeNotifications] Total scheduled: ${scheduled}`);
   } catch (e) {
-    console.warn('Failed to sync native notifications', e);
+    console.warn('[syncNativeNotifications] Error:', e);
   }
 }
 
-// Checks if a plan item is due right now (or past due and hasn't been triggered yet)
+// ============ Original utility functions below (unchanged) ============
+
 export function isPlanDueNow(plan: PlanItem, now = new Date()): boolean {
   if (plan.completed || !plan.reminderEnabled || plan.reminderTriggered) {
     return false;
@@ -146,7 +145,6 @@ export function isPlanDueNow(plan: PlanItem, now = new Date()): boolean {
 
   const [year, month, day] = plan.dueDate.split('-').map(Number);
   const [hours, minutes] = plan.dueTime.split(':').map(Number);
-
   const planDateTime = new Date(year, month - 1, day, hours, minutes, 0, 0);
 
   const diffMs = now.getTime() - planDateTime.getTime();
@@ -173,7 +171,6 @@ export function formatFriendlyDate(dueDateStr: string, dueTimeStr?: string): { t
   if (diffDays === 0) {
     text = `今天${timePart}`;
     isToday = true;
-
     if (dueTimeStr) {
       const [h, min] = dueTimeStr.split(':').map(Number);
       const targetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, min);
