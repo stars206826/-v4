@@ -131,9 +131,14 @@ public class NativeAlarmPlugin extends Plugin {
         Context context = getContext();
         JSObject result = new JSObject();
 
-        boolean canDrawOverlays = true;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            canDrawOverlays = Settings.canDrawOverlays(context);
+        // Check full-screen intent permission (Android 14+ / API 34+)
+        // On Android 13 and below, USE_FULL_SCREEN_INTENT is auto-granted from manifest
+        boolean canUseFullScreenIntent = true;
+        if (Build.VERSION.SDK_INT >= 34) {
+            NotificationManager nm = context.getSystemService(NotificationManager.class);
+            if (nm != null) {
+                canUseFullScreenIntent = nm.canUseFullScreenIntent();
+            }
         }
 
         boolean canScheduleExactAlarms = true;
@@ -146,19 +151,28 @@ public class NativeAlarmPlugin extends Plugin {
 
         boolean notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled();
 
-        result.put("canDrawOverlays", canDrawOverlays);
+        result.put("canUseFullScreenIntent", canUseFullScreenIntent);
         result.put("canScheduleExactAlarms", canScheduleExactAlarms);
         result.put("notificationsEnabled", notificationsEnabled);
-        
+
         call.resolve(result);
     }
 
     @PluginMethod
     public void requestOverlayPermission(PluginCall call) {
+        // Kept for backward compatibility - now redirects to full-screen intent settings
+        requestFullScreenIntentPermission(call);
+    }
+
+    @PluginMethod
+    public void requestFullScreenIntentPermission(PluginCall call) {
         Context context = getContext();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(context)) {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.getPackageName()));
+        if (Build.VERSION.SDK_INT >= 34) {
+            NotificationManager nm = context.getSystemService(NotificationManager.class);
+            if (nm != null && !nm.canUseFullScreenIntent()) {
+                // On Android 14+, open the full-screen intent permission settings
+                Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, context.getPackageName());
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(intent);
             }

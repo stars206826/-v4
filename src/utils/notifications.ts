@@ -7,8 +7,8 @@ interface NativeAlarmPlugin {
   cancelAlarm(options: { notifId: number }): Promise<{ success: boolean }>;
   cancelAllAlarms(): Promise<{ success: boolean; cancelled: number }>;
   testNotification(): Promise<{ success: boolean; message: string }>;
-  checkPermissions(): Promise<{ canDrawOverlays: boolean; canScheduleExactAlarms: boolean; notificationsEnabled: boolean }>;
-  requestOverlayPermission(): Promise<void>;
+  checkPermissions(): Promise<{ canUseFullScreenIntent: boolean; canScheduleExactAlarms: boolean; notificationsEnabled: boolean }>;
+  requestFullScreenIntentPermission(): Promise<void>;
   requestExactAlarmPermission(): Promise<void>;
   openAppNotificationSettings(): Promise<void>;
 }
@@ -44,9 +44,9 @@ export async function checkAndRequestAllPermissions(): Promise<boolean> {
       return false;
     }
 
-    if (!perms.canDrawOverlays) {
-      const ok = window.confirm('为了在桌面直接弹窗提醒，必须开启【悬浮窗/显示在其他应用上层】权限。是否去开启？');
-      if (ok) await NativeAlarm.requestOverlayPermission();
+    if (!perms.canUseFullScreenIntent) {
+      const ok = window.confirm('为了在桌面直接弹窗提醒，必须开启【全屏通知】权限。是否去开启？');
+      if (ok) await NativeAlarm.requestFullScreenIntentPermission();
       return false;
     }
 

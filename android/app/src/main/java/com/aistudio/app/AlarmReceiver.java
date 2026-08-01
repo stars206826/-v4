@@ -20,7 +20,7 @@ public class AlarmReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        Log.d(TAG, "AlarmReceiver triggered on desktop via FullScreenIntent!");
+        Log.d(TAG, "AlarmReceiver triggered!");
 
         PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         PowerManager.WakeLock wakeLock = null;
@@ -29,7 +29,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                     PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
                     "aistudio:desktop_popup_wakelock"
             );
-            wakeLock.acquire(15 * 1000L); // 15 seconds
+            wakeLock.acquire(15 * 1000L); // auto-releases after 15s
         }
 
         try {
@@ -41,10 +41,32 @@ public class AlarmReceiver extends BroadcastReceiver {
             if (body == null) body = "您有一个待办计划到期了";
 
             createSilentNotificationChannel(context);
-            showFullScreenNotification(context, notifId, title, body);
+
+            // Build the alert intent for AlarmAlertActivity
+            Intent alertIntent = new Intent(context, AlarmAlertActivity.class);
+            alertIntent.putExtra("title", title);
+            alertIntent.putExtra("body", body);
+            alertIntent.putExtra("notifId", notifId);
+            alertIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+            // PRIMARY: directly startActivity.
+            // setAlarmClock grants a temporary background-activity-start exemption.
+            // This works even when screen is ON and phone is unlocked,
+            // where setFullScreenIntent only shows a small heads-up banner.
+            try {
+                Log.d(TAG, "Attempting direct startActivity for AlarmAlertActivity");
+                context.startActivity(alertIntent);
+            } catch (Exception e) {
+                Log.w(TAG, "Direct startActivity failed, relying on fullScreenIntent", e);
+            }
+
+            // BACKUP: post notification with full-screen intent.
+            // This handles the screen-off/locked case where startActivity
+            // might not wake the screen on all ROMs.
+            showFullScreenNotification(context, notifId, title, body, alertIntent);
 
         } catch (Exception e) {
-            Log.e(TAG, "Error popping up full screen notification", e);
+            Log.e(TAG, "Error in onReceive", e);
         } finally {
             if (wakeLock != null && wakeLock.isHeld()) {
                 wakeLock.release();
@@ -64,8 +86,8 @@ public class AlarmReceiver extends BroadcastReceiver {
                 channel.setDescription("到期时的静音桌面弹窗提醒");
                 channel.enableLights(true);
                 channel.setLightColor(0xFFC86D51);
-                channel.setSound(null, null); // Completely silent as requested
-                channel.enableVibration(false); // Silent
+                channel.setSound(null, null);
+                channel.enableVibration(false);
                 channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
 
                 manager.createNotificationChannel(channel);
@@ -73,16 +95,11 @@ public class AlarmReceiver extends BroadcastReceiver {
         }
     }
 
-    private void showFullScreenNotification(Context context, int notifId, String title, String body) {
+    private void showFullScreenNotification(Context context, int notifId, String title, String body, Intent alertIntent) {
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null) return;
 
-        Intent alertIntent = new Intent(context, AlarmAlertActivity.class);
-        alertIntent.putExtra("title", title);
-        alertIntent.putExtra("body", body);
-        alertIntent.putExtra("notifId", notifId);
-        alertIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-
-        PendingIntent contentIntent = PendingIntent.getActivity(
+        PendingIntent fullScreenIntent = PendingIntent.getActivity(
                 context,
                 notifId,
                 alertIntent,
@@ -96,15 +113,13 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setSound(null) // Silent
-                .setVibrate(null) // Silent
+                .setSound(null)
+                .setVibrate(null)
                 .setAutoCancel(true)
-                .setContentIntent(contentIntent)
-                .setFullScreenIntent(contentIntent, true); // This is the key: tells Android to launch it immediately if possible
+                .setContentIntent(fullScreenIntent)
+                .setFullScreenIntent(fullScreenIntent, true);
 
-        if (manager != null) {
-            manager.notify(notifId, builder.build());
-        }
+        manager.notify(notifId, builder.build());
     }
 
     public static void scheduleAlarm(Context context, int notifId, String title, String body, long triggerAtMillis) {
