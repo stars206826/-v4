@@ -5,6 +5,18 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 export async function requestNotificationPermission(): Promise<boolean> {
   if (Capacitor.isNativePlatform()) {
     try {
+      // Create high-importance channel on Android first
+      await LocalNotifications.createChannel({
+        id: 'default_reminders',
+        name: '计划日程提醒',
+        description: '日程到期时的定时提醒消息',
+        importance: 5, // High importance for heads-up banner & sound
+        visibility: 1, // Public on lockscreen
+        vibration: true,
+        lights: true,
+        lightColor: '#C86D51',
+      }).catch((err) => console.warn('Channel creation error:', err));
+
       const result = await LocalNotifications.requestPermissions();
       return result.display === 'granted';
     } catch (e) {
@@ -60,13 +72,25 @@ export async function syncNativeNotifications(plans: PlanItem[]) {
   }
 
   try {
-    // 1. Cancel all previously scheduled notifications
+    // 1. Ensure channel exists
+    await LocalNotifications.createChannel({
+      id: 'default_reminders',
+      name: '计划日程提醒',
+      description: '日程到期时的定时提醒消息',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      lights: true,
+      lightColor: '#C86D51',
+    }).catch(() => {});
+
+    // 2. Cancel all previously scheduled notifications
     const pending = await LocalNotifications.getPending();
     if (pending.notifications.length > 0) {
       await LocalNotifications.cancel({ notifications: pending.notifications });
     }
 
-    // 2. Schedule new notifications
+    // 3. Schedule new notifications
     const now = new Date().getTime();
     const notificationsToSchedule = [];
 
@@ -86,10 +110,12 @@ export async function syncNativeNotifications(plans: PlanItem[]) {
         notificationsToSchedule.push({
           id: hashStringToInt(plan.id),
           title: `⏰ 计划提醒到点: ${plan.title}`,
-          body: `时间: ${plan.dueTime} | 标签: ${plan.priority}`,
-          schedule: { at: scheduleTime },
-          sound: 'beep.wav',
-          smallIcon: 'ic_launcher_round', 
+          body: `时间: ${plan.dueTime} | 优先级: ${plan.priority}`,
+          channelId: 'default_reminders',
+          schedule: { 
+            at: scheduleTime,
+            allowWhileIdle: true // Allow triggering during Android Doze mode / closed app
+          },
           actionTypeId: '',
           extra: { planId: plan.id }
         });

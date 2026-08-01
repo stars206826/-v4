@@ -75,16 +75,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
   return (
     <header className="bg-[#FAF8F3] dark:bg-[#262420] text-[#2D2A26] dark:text-[#F2EFE9] shadow-sm sticky top-0 z-30 transition-colors border-b border-[#E5E0D3] dark:border-[#3F3B35]">
-      {/* Android Top Status Bar */}
-      <div className="px-4 py-1 text-xs text-[#7C776E] dark:text-[#A39E93] flex items-center justify-between border-b border-[#E5E0D3]/80 dark:border-[#3F3B35]/80 bg-[#F1EDE4] dark:bg-[#1C1B18]">
-        <span className="font-medium text-[#2D2A26] dark:text-[#F2EFE9]">{currentTime}</span>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] bg-[#60775A]/20 text-[#60775A] dark:text-[#81A078] px-1.5 py-0.5 rounded font-mono font-semibold">5G</span>
-          <div className="w-2.5 h-2.5 rounded-full bg-[#60775A] dark:bg-[#81A078] inline-block animate-pulse" title="系统提醒服务已启用" />
-          <span className="text-[11px] font-mono">98%</span>
-        </div>
-      </div>
-
       {/* Primary Top Bar */}
       <div className="px-4 py-3 flex items-center justify-between gap-2">
         {!showSearch ? (

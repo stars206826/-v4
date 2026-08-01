@@ -17,7 +17,7 @@ import { AlarmModal } from './components/AlarmModal';
 import { StatsDrawer } from './components/StatsDrawer';
 import { BottomNav } from './components/BottomNav';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
-import { isPlanDueNow, sendDesktopNotification, syncNativeNotifications } from './utils/notifications';
+import { isPlanDueNow, sendDesktopNotification, syncNativeNotifications, requestNotificationPermission } from './utils/notifications';
 import {
   Plus,
   Filter,
@@ -67,6 +67,11 @@ export default function App() {
       console.warn('LocalStorage category save error:', e);
     }
   }, [categories]);
+
+  // Request Notification permission & create Channel on Mount
+  React.useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
   // UI State
   const [currentView, setCurrentView] = React.useState<ViewMode>('list');
