@@ -7,6 +7,10 @@ interface NativeAlarmPlugin {
   cancelAlarm(options: { notifId: number }): Promise<{ success: boolean }>;
   cancelAllAlarms(): Promise<{ success: boolean; cancelled: number }>;
   testNotification(): Promise<{ success: boolean; message: string }>;
+  checkPermissions(): Promise<{ canDrawOverlays: boolean; canScheduleExactAlarms: boolean; notificationsEnabled: boolean }>;
+  requestOverlayPermission(): Promise<void>;
+  requestExactAlarmPermission(): Promise<void>;
+  openAppNotificationSettings(): Promise<void>;
 }
 
 const NativeAlarm = registerPlugin<NativeAlarmPlugin>('NativeAlarm');
@@ -19,35 +23,44 @@ function hashStringToInt(str: string): number {
     hash = (hash << 5) - hash + char;
     hash = hash & hash;
   }
-  // Ensure positive and non-zero (Android notification ID 0 can cause issues)
   return Math.abs(hash) || 1;
+}
+
+export async function checkAndRequestAllPermissions(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return true;
+
+  try {
+    const perms = await NativeAlarm.checkPermissions();
+
+    if (!perms.notificationsEnabled) {
+      const ok = window.confirm('无法弹窗！请开启【通知】权限，否则您无法接收到任何提醒。是否去设置？');
+      if (ok) await NativeAlarm.openAppNotificationSettings();
+      return false;
+    }
+
+    if (!perms.canScheduleExactAlarms) {
+      const ok = window.confirm('为了准时提醒，请开启【精确闹钟】权限。是否去设置？');
+      if (ok) await NativeAlarm.requestExactAlarmPermission();
+      return false;
+    }
+
+    if (!perms.canDrawOverlays) {
+      const ok = window.confirm('为了在桌面直接弹窗提醒，必须开启【悬浮窗/显示在其他应用上层】权限。是否去开启？');
+      if (ok) await NativeAlarm.requestOverlayPermission();
+      return false;
+    }
+
+    return true;
+  } catch (e) {
+    console.warn('Error checking permissions:', e);
+    return true; // Fallback
+  }
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
   if (Capacitor.isNativePlatform()) {
-    try {
-      // On Android 13+, POST_NOTIFICATIONS is a runtime permission.
-      // Capacitor's core handles this, but we also send a test notification
-      // to force-create the channel and verify everything works.
-      const { LocalNotifications } = await import('@capacitor/local-notifications');
-      const result = await LocalNotifications.requestPermissions();
-      const granted = result.display === 'granted';
-
-      if (granted) {
-        // Send a quick test to verify our native alarm pipeline works
-        try {
-          await NativeAlarm.testNotification();
-          console.log('Native alarm test scheduled successfully');
-        } catch (e) {
-          console.warn('Native alarm test failed:', e);
-        }
-      }
-
-      return granted;
-    } catch (e) {
-      console.warn('Native request permission error:', e);
-      return false;
-    }
+    // Just trigger the new comprehensive check instead
+    return checkAndRequestAllPermissions();
   }
 
   // Web fallback

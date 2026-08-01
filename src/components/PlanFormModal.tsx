@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Category, PlanItem, PriorityLevel } from '../types';
 import { PRIORITY_MAP } from '../data/initialData';
+import { checkAndRequestAllPermissions } from '../utils/notifications';
 
 interface PlanFormModalProps {
   isOpen: boolean;
@@ -86,6 +87,14 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
   }
+
+  const handleToggleReminder = async () => {
+    if (!reminderEnabled) {
+      const granted = await checkAndRequestAllPermissions();
+      if (!granted) return; // don't toggle if permissions missing
+    }
+    setReminderEnabled(!reminderEnabled);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,7 +322,7 @@ export const PlanFormModal: React.FC<PlanFormModalProps> = ({
               {/* Switch */}
               <button
                 type="button"
-                onClick={() => setReminderEnabled(!reminderEnabled)}
+                onClick={handleToggleReminder}
                 className={`w-11 h-6 rounded-full transition-colors p-1 relative ${
                   reminderEnabled ? 'bg-[#C86D51]' : 'bg-[#C8C2B3] dark:bg-[#575248]'
                 }`}

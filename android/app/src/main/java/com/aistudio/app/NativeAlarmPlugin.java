@@ -1,8 +1,14 @@
 package com.aistudio.app;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.Settings;
 import android.util.Log;
+import android.app.AlarmManager;
+import androidx.core.app.NotificationManagerCompat;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -118,6 +124,76 @@ public class NativeAlarmPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("Error sending test notification: " + e.getMessage());
         }
+    }
+
+    @PluginMethod
+    public void checkPermissions(PluginCall call) {
+        Context context = getContext();
+        JSObject result = new JSObject();
+
+        boolean canDrawOverlays = true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            canDrawOverlays = Settings.canDrawOverlays(context);
+        }
+
+        boolean canScheduleExactAlarms = true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (alarmManager != null) {
+                canScheduleExactAlarms = alarmManager.canScheduleExactAlarms();
+            }
+        }
+
+        boolean notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled();
+
+        result.put("canDrawOverlays", canDrawOverlays);
+        result.put("canScheduleExactAlarms", canScheduleExactAlarms);
+        result.put("notificationsEnabled", notificationsEnabled);
+        
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void requestOverlayPermission(PluginCall call) {
+        Context context = getContext();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(context)) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+            }
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void requestExactAlarmPermission(PluginCall call) {
+        Context context = getContext();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (alarmManager != null && !alarmManager.canScheduleExactAlarms()) {
+                Intent intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:" + context.getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+            }
+        }
+        call.resolve();
+    }
+    
+    @PluginMethod
+    public void openAppNotificationSettings(PluginCall call) {
+        Context context = getContext();
+        Intent intent = new Intent();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intent.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            intent.putExtra(Settings.EXTRA_APP_PACKAGE, context.getPackageName());
+        } else {
+            intent.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + context.getPackageName()));
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(intent);
+        call.resolve();
     }
 
     private void persistAlarm(Context context, int notifId, String title, String body, long triggerAt) {

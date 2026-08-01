@@ -35,11 +35,7 @@
             android:turnScreenOn="true"
             android:exported="false" />
 
-        <!-- Floating Window Service -->
-        <service
-            android:name=".AlarmFloatingService"
-            android:enabled="true"
-            android:exported="false" />
+
 
         <!-- Native Alarm Receiver for background notifications -->
         <receiver
