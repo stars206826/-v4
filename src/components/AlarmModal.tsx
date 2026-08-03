@@ -2,6 +2,7 @@ import React from 'react';
 import { Bell, CheckCircle2, Clock, X, Volume2, AlertOctagon } from 'lucide-react';
 import { Category, PlanItem } from '../types';
 import { PRIORITY_MAP } from '../data/initialData';
+import { Capacitor } from '@capacitor/core';
 import { audioPlayer } from '../utils/audio';
 
 interface AlarmModalProps {
@@ -24,6 +25,11 @@ export const AlarmModal: React.FC<AlarmModalProps> = ({
   React.useEffect(() => {
     if (activeAlarmPlan) {
       stopAudioRef.current = { current: false };
+      // On native Android the full-screen native popup (AlarmAlertActivity) is
+      // the user-facing alert. This web modal sits hidden behind it, so its
+      // looping ringtone would keep ringing with no way for the user to stop
+      // it. Skip the sound entirely on native platforms (silent popup-only).
+      if (Capacitor.isNativePlatform()) return;
       const stopFn = audioPlayer.playAlarmLoop(stopAudioRef.current);
       return () => {
         stopAudioRef.current.current = true;
