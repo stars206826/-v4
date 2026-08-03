@@ -49,16 +49,43 @@ public class AlarmReceiver extends BroadcastReceiver {
             alertIntent.putExtra("notifId", notifId);
             alertIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-            // PRIMARY: directly startActivity.
-            // setAlarmClock grants a temporary background-activity-start exemption.
-            // This works even when screen is ON and phone is unlocked,
-            // where setFullScreenIntent only shows a small heads-up banner.
+            // PRIMARY: launch AlarmAlertActivity via a PendingIntent-mediated send.
+            // A direct context.startActivity() from a BroadcastReceiver is blocked by
+            // Android 14+ BAL hardening ("Background activity launch blocked") on
+            // HONOR devices, so instead we create an activity PendingIntent with the
+            // creator-side opt-in and send it with the sender-side opt-in.
             try {
-                Log.e(TAG, "[TRACE-A] Attempting direct startActivity for AlarmAlertActivity");
-                context.startActivity(alertIntent);
-                Log.e(TAG, "[TRACE-A] direct startActivity dispatched");
+                Log.e(TAG, "[TRACE-A] Attempting PI-mediated startActivity");
+                PendingIntent alertPI;
+                if (Build.VERSION.SDK_INT >= 34) {
+                    android.os.Bundle creatorOpts = android.app.ActivityOptions.makeBasic()
+                            .setPendingIntentCreatorBackgroundActivityStartMode(
+                                    android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                            .toBundle();
+                    alertPI = PendingIntent.getActivity(
+                            context,
+                            notifId,
+                            alertIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE,
+                            creatorOpts
+                    );
+                    android.os.Bundle senderOpts = android.app.ActivityOptions.makeBasic()
+                            .setPendingIntentBackgroundActivityStartMode(
+                                    android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                            .toBundle();
+                    alertPI.send(context, 0, null, null, null, null, senderOpts);
+                } else {
+                    alertPI = PendingIntent.getActivity(
+                            context,
+                            notifId,
+                            alertIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                    );
+                    alertPI.send();
+                }
+                Log.e(TAG, "[TRACE-A] PI-mediated startActivity dispatched");
             } catch (Exception e) {
-                Log.e(TAG, "[TRACE-A] Direct startActivity failed: " + e);
+                Log.e(TAG, "[TRACE-A] PI-mediated startActivity failed: " + e);
             }
 
             // BACKUP: post notification with full-screen intent.
@@ -132,30 +159,12 @@ public class AlarmReceiver extends BroadcastReceiver {
         intent.putExtra("body", body);
         intent.putExtra("notifId", notifId);
 
-        PendingIntent pendingIntent;
-        if (Build.VERSION.SDK_INT >= 34) {
-            // Android 14+ requires the PendingIntent CREATOR to explicitly opt in
-            // to background activity launches when the alarm fires. Without this,
-            // the receiver's startActivity is blocked ("Background activity launch
-            // blocked") even though setAlarmClock was used.
-            android.os.Bundle piOptions = android.app.ActivityOptions.makeBasic()
-                    .setPendingIntentCreatorBackgroundActivityLaunchAllowed(true)
-                    .toBundle();
-            pendingIntent = PendingIntent.getBroadcast(
-                    context,
-                    notifId,
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE,
-                    piOptions
-            );
-        } else {
-            pendingIntent = PendingIntent.getBroadcast(
-                    context,
-                    notifId,
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-            );
-        }
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                context,
+                notifId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             AlarmManager.AlarmClockInfo alarmClockInfo = new AlarmManager.AlarmClockInfo(
