@@ -43,7 +43,7 @@
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Boot Receiver to re-register alarms after device restart -->
+        <!-- Boot Receiver to re-register alarms after device restart / app update -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -52,6 +52,7 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 
@@ -75,7 +76,5 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.SYSTEM_OVERLAY_WINDOW" />
     <uses-permission android:name="android.permission.REORDER_TASKS" />
 </manifest>

@@ -171,11 +171,24 @@ public class NativeAlarmPlugin extends Plugin {
         if (Build.VERSION.SDK_INT >= 34) {
             NotificationManager nm = context.getSystemService(NotificationManager.class);
             if (nm != null && !nm.canUseFullScreenIntent()) {
-                // On Android 14+, open the full-screen intent permission settings
-                Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
-                intent.putExtra(Settings.EXTRA_APP_PACKAGE, context.getPackageName());
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                context.startActivity(intent);
+                try {
+                    // Android 14+: the toggle lives in the special app-access page
+                    // "Full-screen intents" (ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT),
+                    // NOT in the regular app notification settings.
+                    Intent intent = new Intent(
+                            Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                            Uri.parse("package:" + context.getPackageName())
+                    );
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(intent);
+                } catch (Exception e) {
+                    // Some ROMs may not expose this page - fall back to notification settings
+                    Log.w(TAG, "FSI settings page unavailable, falling back to notification settings", e);
+                    Intent fallback = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                    fallback.putExtra(Settings.EXTRA_APP_PACKAGE, context.getPackageName());
+                    fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(fallback);
+                }
             }
         }
         call.resolve();

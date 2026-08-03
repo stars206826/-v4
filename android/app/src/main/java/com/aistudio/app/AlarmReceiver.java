@@ -67,11 +67,11 @@ public class AlarmReceiver extends BroadcastReceiver {
 
         } catch (Exception e) {
             Log.e(TAG, "Error in onReceive", e);
-        } finally {
-            if (wakeLock != null && wakeLock.isHeld()) {
-                wakeLock.release();
-            }
         }
+        // NOTE: do NOT release the wake lock here. Releasing it right after
+        // startActivity is dispatched lets the CPU sleep again before
+        // AlarmAlertActivity finishes drawing on slow devices. The lock was
+        // acquired with a 15s timeout and will auto-release by itself.
     }
 
     private void createSilentNotificationChannel(Context context) {

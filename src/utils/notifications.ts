@@ -1,5 +1,6 @@
 import { PlanItem } from '../types';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 // Register our custom native alarm plugin
 interface NativeAlarmPlugin {
@@ -15,40 +16,43 @@ interface NativeAlarmPlugin {
 
 const NativeAlarm = registerPlugin<NativeAlarmPlugin>('NativeAlarm');
 
-// Generate a stable numeric ID from a string
-function hashStringToInt(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash) || 1;
-}
-
 export async function checkAndRequestAllPermissions(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return true;
 
   try {
-    const perms = await NativeAlarm.checkPermissions();
+    let perms = await NativeAlarm.checkPermissions();
 
+    // 1. Notification permission (POST_NOTIFICATIONS)
+    //    On Android 13+ notifications are OFF by default and must be granted
+    //    via the runtime dialog. Actually show the system dialog here
+    //    (previous versions only checked and redirected to settings).
     if (!perms.notificationsEnabled) {
-      const ok = window.confirm('无法弹窗！请开启【通知】权限，否则您无法接收到任何提醒。是否去设置？');
-      if (ok) await NativeAlarm.openAppNotificationSettings();
-      return false;
+      try {
+        const status = await LocalNotifications.requestPermissions();
+        console.log('[permissions] POST_NOTIFICATIONS request result:', status.display);
+      } catch (e) {
+        console.warn('[permissions] requestPermissions error:', e);
+      }
+      // Re-check after the dialog
+      perms = await NativeAlarm.checkPermissions();
+      if (!perms.notificationsEnabled) {
+        const ok = window.confirm('无法弹窗！请开启【通知】权限，否则您无法接收到任何提醒。是否去设置？');
+        if (ok) await NativeAlarm.openAppNotificationSettings();
+        return false;
+      }
     }
 
-    if (!perms.canScheduleExactAlarms) {
-      const ok = window.confirm('为了准时提醒，请开启【精确闹钟】权限。是否去设置？');
-      if (ok) await NativeAlarm.requestExactAlarmPermission();
-      return false;
-    }
-
+    // 2. Full-screen intent permission (Android 14+ special permission)
+    //    Without it the alarm still fires while the screen is ON (direct
+    //    startActivity path), so we recommend but do NOT hard-block the toggle.
     if (!perms.canUseFullScreenIntent) {
-      const ok = window.confirm('为了在桌面直接弹窗提醒，必须开启【全屏通知】权限。是否去开启？');
+      const ok = window.confirm('为了在锁屏/灭屏时也能直接弹窗，建议开启【全屏通知】权限。是否现在去开启？（不开启时亮屏状态下仍可正常提醒）');
       if (ok) await NativeAlarm.requestFullScreenIntentPermission();
-      return false;
     }
+
+    // Note: native side uses AlarmManager.setAlarmClock(), which does NOT
+    // require SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM, so we intentionally
+    // do not check or block on canScheduleExactAlarms anymore.
 
     return true;
   } catch (e) {
@@ -104,6 +108,10 @@ export async function syncNativeNotifications(plans: PlanItem[]) {
     // 2. Schedule new alarms for upcoming plans
     const now = Date.now();
     let scheduled = 0;
+    // Sequential unique ids (1,2,3...) avoid the hash-collision problem:
+    // identical PendingIntent requestCodes would overwrite each other,
+    // causing only the LAST scheduled alarm to fire.
+    let nextNotifId = 1;
 
     for (const plan of plans) {
       // Only schedule for incomplete plans with reminders enabled
@@ -122,7 +130,7 @@ export async function syncNativeNotifications(plans: PlanItem[]) {
 
       // Only schedule future alarms
       if (triggerAt && triggerAt > now) {
-        const notifId = hashStringToInt(plan.id);
+        const notifId = nextNotifId++;
         const title = `⏰ ${plan.title}`;
         const body = `📅 到期时间: ${plan.dueTime} · 优先级: ${plan.priority}`;
 
