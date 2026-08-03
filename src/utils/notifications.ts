@@ -20,7 +20,9 @@ export async function checkAndRequestAllPermissions(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return true;
 
   try {
+    console.error('[TRACE] checkAndRequestAllPermissions: start');
     let perms = await NativeAlarm.checkPermissions();
+    console.error('[TRACE] checkPermissions OK: ' + JSON.stringify(perms));
 
     // 1. Notification permission (POST_NOTIFICATIONS)
     //    On Android 13+ notifications are OFF by default and must be granted
@@ -56,12 +58,13 @@ export async function checkAndRequestAllPermissions(): Promise<boolean> {
 
     return true;
   } catch (e) {
-    console.warn('Error checking permissions:', e);
+    console.error('[TRACE] checkAndRequestAllPermissions ERROR: ' + String(e));
     return true; // Fallback
   }
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
+  console.error('[TRACE] requestNotificationPermission native=' + Capacitor.isNativePlatform());
   if (Capacitor.isNativePlatform()) {
     // Just trigger the new comprehensive check instead
     return checkAndRequestAllPermissions();
@@ -98,12 +101,13 @@ export function sendDesktopNotification(title: string, body: string, icon?: stri
  * it bypasses Doze mode, battery optimization, and works even when app is force-killed.
  */
 export async function syncNativeNotifications(plans: PlanItem[]) {
+  console.error('[TRACE] syncNativeNotifications called, native=' + Capacitor.isNativePlatform() + ', plans=' + plans.length);
   if (!Capacitor.isNativePlatform()) return;
 
   try {
     // 1. Cancel all existing alarms
     await NativeAlarm.cancelAllAlarms();
-    console.log('[syncNativeNotifications] Cancelled all existing alarms');
+    console.error('[TRACE] cancelAllAlarms OK');
 
     // 2. Schedule new alarms for upcoming plans
     const now = Date.now();
@@ -135,18 +139,19 @@ export async function syncNativeNotifications(plans: PlanItem[]) {
         const body = `📅 到期时间: ${plan.dueTime} · 优先级: ${plan.priority}`;
 
         try {
+          console.error('[TRACE] scheduleAlarm: id=' + notifId + ' title=' + plan.title + ' at=' + new Date(triggerAt).toLocaleString());
           await NativeAlarm.scheduleAlarm({ notifId, title, body, triggerAt });
           scheduled++;
-          console.log(`[syncNativeNotifications] Scheduled: "${plan.title}" at ${new Date(triggerAt).toLocaleString()}, id=${notifId}`);
+          console.error('[TRACE] scheduleAlarm OK id=' + notifId);
         } catch (err) {
-          console.warn(`[syncNativeNotifications] Failed to schedule "${plan.title}":`, err);
+          console.error('[TRACE] scheduleAlarm FAILED for "' + plan.title + '": ' + String(err));
         }
       }
     }
 
-    console.log(`[syncNativeNotifications] Total scheduled: ${scheduled}`);
+    console.error('[TRACE] sync done, total scheduled: ' + scheduled);
   } catch (e) {
-    console.warn('[syncNativeNotifications] Error:', e);
+    console.error('[TRACE] syncNativeNotifications ERROR: ' + String(e));
   }
 }
 
