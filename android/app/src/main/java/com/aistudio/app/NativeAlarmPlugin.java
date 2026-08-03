@@ -35,11 +35,36 @@ public class NativeAlarmPlugin extends Plugin {
             int notifId = call.getInt("notifId", 0);
             String title = call.getString("title", "⏰ 计划提醒");
             String body = call.getString("body", "您有一个待办计划到期了");
-            Double triggerAtDouble = call.getDouble("triggerAt");
-            long triggerAt = triggerAtDouble != null ? triggerAtDouble.longValue() : 0L;
+
+            // Robust triggerAt parsing: read the raw value from the bridge data
+            // and accept Number or numeric String. (call.getDouble previously
+            // returned null for valid JS numbers, causing triggerAt=0 and
+            // every alarm to be rejected as "not in the future".)
+            Log.e(TAG, "[TRACE-N] scheduleAlarm raw data: " + call.getData().toString());
+            Object rawTrigger = call.getData().opt("triggerAt");
+            Log.e(TAG, "[TRACE-N] raw triggerAt=" + rawTrigger
+                    + " type=" + (rawTrigger == null ? "null" : rawTrigger.getClass().getName()));
+
+            long triggerAt = 0L;
+            if (rawTrigger instanceof Number) {
+                triggerAt = ((Number) rawTrigger).longValue();
+            } else if (rawTrigger != null) {
+                String s = rawTrigger.toString().trim();
+                try {
+                    triggerAt = Long.parseLong(s);
+                } catch (NumberFormatException nfe) {
+                    try {
+                        triggerAt = (long) Double.parseDouble(s);
+                    } catch (NumberFormatException ignored) {
+                        // leave triggerAt = 0
+                    }
+                }
+            }
+            Log.e(TAG, "[TRACE-N] parsed triggerAt=" + triggerAt + " now=" + System.currentTimeMillis());
 
             if (triggerAt <= System.currentTimeMillis()) {
-                call.reject("triggerAt must be in the future");
+                call.reject("triggerAt must be in the future, got=" + triggerAt
+                        + " (raw=" + rawTrigger + ") now=" + System.currentTimeMillis());
                 return;
             }
 
