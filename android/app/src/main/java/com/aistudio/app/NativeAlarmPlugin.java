@@ -185,9 +185,35 @@ public class NativeAlarmPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void canDrawOverlay(PluginCall call) {
+        boolean canDraw = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            canDraw = Settings.canDrawOverlays(getContext());
+        } else {
+            canDraw = true;
+        }
+        JSObject result = new JSObject();
+        result.put("canDraw", canDraw);
+        call.resolve(result);
+    }
+
+    @PluginMethod
     public void requestOverlayPermission(PluginCall call) {
-        // Kept for backward compatibility - now redirects to full-screen intent settings
-        requestFullScreenIntentPermission(call);
+        // On HONOR/HUAWEI devices the "显示在其他应用上层" (overlay) permission
+        // is what unlocks screen-on popups for background apps.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(getContext())) {
+            try {
+                Intent intent = new Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getContext().getPackageName())
+                );
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+            } catch (Exception e) {
+                Log.w(TAG, "Overlay settings page unavailable", e);
+            }
+        }
+        call.resolve();
     }
 
     @PluginMethod

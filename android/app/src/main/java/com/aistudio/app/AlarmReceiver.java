@@ -155,44 +155,27 @@ public class AlarmReceiver extends BroadcastReceiver {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) return;
 
-        // The alarm operation is an ACTIVITY PendingIntent (not a broadcast one).
-        // When the alarm fires, the SYSTEM launches AlarmAlertActivity directly.
-        // A system-driven launch bypasses Android 14+ / HONOR BAL hardening that
-        // blocks our own background process from starting activities.
-        Intent alertIntent = new Intent(context, AlarmAlertActivity.class);
-        alertIntent.putExtra("title", title);
-        alertIntent.putExtra("body", body);
-        alertIntent.putExtra("notifId", notifId);
-        alertIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        // Broadcast receiver as the alarm operation: guarantees the notification
+        // is always posted (screen-off FSI full-screen popup + heads-up fallback),
+        // while onReceive also attempts to launch AlarmAlertActivity directly.
+        Intent intent = new Intent(context, AlarmReceiver.class);
+        intent.putExtra("title", title);
+        intent.putExtra("body", body);
+        intent.putExtra("notifId", notifId);
 
-        PendingIntent pendingIntent;
-        if (Build.VERSION.SDK_INT >= 34) {
-            android.os.Bundle opts = android.app.ActivityOptions.makeBasic()
-                    .setPendingIntentCreatorBackgroundActivityStartMode(
-                            android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
-                    .toBundle();
-            pendingIntent = PendingIntent.getActivity(
-                    context,
-                    notifId,
-                    alertIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE,
-                    opts
-            );
-        } else {
-            pendingIntent = PendingIntent.getActivity(
-                    context,
-                    notifId,
-                    alertIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-            );
-        }
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                context,
+                notifId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
 
         AlarmManager.AlarmClockInfo alarmClockInfo = new AlarmManager.AlarmClockInfo(
                 triggerAtMillis,
                 pendingIntent
         );
         alarmManager.setAlarmClock(alarmClockInfo, pendingIntent);
-        Log.e(TAG, "[TRACE-A] scheduleAlarm: activity-PI alarm set for " + triggerAtMillis + " id=" + notifId);
+        Log.e(TAG, "[TRACE-A] scheduleAlarm: broadcast-PI alarm set for " + triggerAtMillis + " id=" + notifId);
     }
 
     public static void cancelAlarm(Context context, int notifId) {

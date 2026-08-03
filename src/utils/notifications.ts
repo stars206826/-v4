@@ -12,6 +12,8 @@ interface NativeAlarmPlugin {
   requestFullScreenIntentPermission(): Promise<void>;
   requestExactAlarmPermission(): Promise<void>;
   openAppNotificationSettings(): Promise<void>;
+  canDrawOverlay(): Promise<{ canDraw: boolean }>;
+  requestOverlayPermission(): Promise<void>;
 }
 
 const NativeAlarm = registerPlugin<NativeAlarmPlugin>('NativeAlarm');
@@ -50,6 +52,21 @@ export async function checkAndRequestAllPermissions(): Promise<boolean> {
     if (!perms.canUseFullScreenIntent) {
       const ok = window.confirm('为了在锁屏/灭屏时也能直接弹窗，建议开启【全屏通知】权限。是否现在去开启？（不开启时亮屏状态下仍可正常提醒）');
       if (ok) await NativeAlarm.requestFullScreenIntentPermission();
+    }
+
+    // 3. Overlay permission ("显示在其他应用上层")
+    //    On HONOR/HUAWEI devices this is what unlocks full-screen popups while
+    //    the screen is ON. Non-blocking: alarms still work without it
+    //    (screen-off full-screen popup + notification fallback).
+    try {
+      const overlay = await NativeAlarm.canDrawOverlay();
+      console.error('[TRACE] overlay canDraw=' + overlay.canDraw);
+      if (!overlay.canDraw) {
+        const ok = window.confirm('为了在亮屏时也能直接全屏弹窗，建议授予【显示在其他应用上层】权限（荣耀/华为手机必需）。是否现在去开启？');
+        if (ok) await NativeAlarm.requestOverlayPermission();
+      }
+    } catch (e) {
+      console.warn('[TRACE] overlay check failed: ' + String(e));
     }
 
     // Note: native side uses AlarmManager.setAlarmClock(), which does NOT
