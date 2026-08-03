@@ -146,7 +146,9 @@ public class AlarmAlertActivity extends Activity {
                 .setContentTitle(title)
                 .setContentText(body)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                // CATEGORY_ALARM makes HONOR play the alarm ringtone even when
+                // silent; CATEGORY_REMINDER keeps it silent as intended.
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setSound(null) // Silent
                 .setVibrate(null) // Silent

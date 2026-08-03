@@ -139,7 +139,10 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .setContentTitle(title)
                 .setContentText(body)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                // NOTE: CATEGORY_ALARM makes HONOR treat this as a system alarm and
+                // play the alarm ringtone even though the channel is silent.
+                // CATEGORY_REMINDER keeps the notification silent as intended.
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setSound(null)
                 .setVibrate(null)
