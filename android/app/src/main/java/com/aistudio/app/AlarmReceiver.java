@@ -20,7 +20,7 @@ public class AlarmReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        Log.d(TAG, "AlarmReceiver triggered!");
+        Log.e(TAG, "[TRACE-A] AlarmReceiver triggered!");
 
         PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         PowerManager.WakeLock wakeLock = null;
@@ -54,10 +54,11 @@ public class AlarmReceiver extends BroadcastReceiver {
             // This works even when screen is ON and phone is unlocked,
             // where setFullScreenIntent only shows a small heads-up banner.
             try {
-                Log.d(TAG, "Attempting direct startActivity for AlarmAlertActivity");
+                Log.e(TAG, "[TRACE-A] Attempting direct startActivity for AlarmAlertActivity");
                 context.startActivity(alertIntent);
+                Log.e(TAG, "[TRACE-A] direct startActivity dispatched");
             } catch (Exception e) {
-                Log.w(TAG, "Direct startActivity failed, relying on fullScreenIntent", e);
+                Log.e(TAG, "[TRACE-A] Direct startActivity failed: " + e);
             }
 
             // BACKUP: post notification with full-screen intent.
@@ -120,6 +121,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .setFullScreenIntent(fullScreenIntent, true);
 
         manager.notify(notifId, builder.build());
+        Log.e(TAG, "[TRACE-A] fullScreenIntent notification posted, id=" + notifId);
     }
 
     public static void scheduleAlarm(Context context, int notifId, String title, String body, long triggerAtMillis) {
@@ -130,12 +132,30 @@ public class AlarmReceiver extends BroadcastReceiver {
         intent.putExtra("body", body);
         intent.putExtra("notifId", notifId);
 
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(
-                context,
-                notifId,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
+        PendingIntent pendingIntent;
+        if (Build.VERSION.SDK_INT >= 34) {
+            // Android 14+ requires the PendingIntent CREATOR to explicitly opt in
+            // to background activity launches when the alarm fires. Without this,
+            // the receiver's startActivity is blocked ("Background activity launch
+            // blocked") even though setAlarmClock was used.
+            android.os.Bundle piOptions = android.app.ActivityOptions.makeBasic()
+                    .setPendingIntentCreatorBackgroundActivityLaunchAllowed(true)
+                    .toBundle();
+            pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    notifId,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE,
+                    piOptions
+            );
+        } else {
+            pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    notifId,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             AlarmManager.AlarmClockInfo alarmClockInfo = new AlarmManager.AlarmClockInfo(
