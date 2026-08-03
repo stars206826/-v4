@@ -153,41 +153,71 @@ public class AlarmReceiver extends BroadcastReceiver {
 
     public static void scheduleAlarm(Context context, int notifId, String title, String body, long triggerAtMillis) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager == null) return;
 
-        Intent intent = new Intent(context, AlarmReceiver.class);
-        intent.putExtra("title", title);
-        intent.putExtra("body", body);
-        intent.putExtra("notifId", notifId);
+        // The alarm operation is an ACTIVITY PendingIntent (not a broadcast one).
+        // When the alarm fires, the SYSTEM launches AlarmAlertActivity directly.
+        // A system-driven launch bypasses Android 14+ / HONOR BAL hardening that
+        // blocks our own background process from starting activities.
+        Intent alertIntent = new Intent(context, AlarmAlertActivity.class);
+        alertIntent.putExtra("title", title);
+        alertIntent.putExtra("body", body);
+        alertIntent.putExtra("notifId", notifId);
+        alertIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(
-                context,
-                notifId,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            AlarmManager.AlarmClockInfo alarmClockInfo = new AlarmManager.AlarmClockInfo(
-                    triggerAtMillis,
-                    pendingIntent
+        PendingIntent pendingIntent;
+        if (Build.VERSION.SDK_INT >= 34) {
+            android.os.Bundle opts = android.app.ActivityOptions.makeBasic()
+                    .setPendingIntentCreatorBackgroundActivityStartMode(
+                            android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                    .toBundle();
+            pendingIntent = PendingIntent.getActivity(
+                    context,
+                    notifId,
+                    alertIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE,
+                    opts
             );
-            alarmManager.setAlarmClock(alarmClockInfo, pendingIntent);
         } else {
-            alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
+            pendingIntent = PendingIntent.getActivity(
+                    context,
+                    notifId,
+                    alertIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
         }
+
+        AlarmManager.AlarmClockInfo alarmClockInfo = new AlarmManager.AlarmClockInfo(
+                triggerAtMillis,
+                pendingIntent
+        );
+        alarmManager.setAlarmClock(alarmClockInfo, pendingIntent);
+        Log.e(TAG, "[TRACE-A] scheduleAlarm: activity-PI alarm set for " + triggerAtMillis + " id=" + notifId);
     }
 
     public static void cancelAlarm(Context context, int notifId) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        Intent intent = new Intent(context, AlarmReceiver.class);
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+        if (alarmManager == null) return;
+
+        // Cancel the current activity-PI alarm
+        Intent alertIntent = new Intent(context, AlarmAlertActivity.class);
+        alertIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent activityPI = PendingIntent.getActivity(
                 context,
                 notifId,
-                intent,
+                alertIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
-        if (alarmManager != null) {
-            alarmManager.cancel(pendingIntent);
-        }
+        alarmManager.cancel(activityPI);
+
+        // Also cancel legacy broadcast-PI alarms from older app versions
+        Intent legacyIntent = new Intent(context, AlarmReceiver.class);
+        PendingIntent legacyPI = PendingIntent.getBroadcast(
+                context,
+                notifId,
+                legacyIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        alarmManager.cancel(legacyPI);
     }
 }

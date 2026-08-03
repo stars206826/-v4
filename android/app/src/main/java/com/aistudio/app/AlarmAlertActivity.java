@@ -27,6 +27,7 @@ public class AlarmAlertActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         } else {
             getWindow().addFlags(
                     WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
@@ -35,6 +36,20 @@ public class AlarmAlertActivity extends Activity {
                     WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
             );
         }
+
+        // The alarm now launches this activity directly (system-driven), so the
+        // activity itself must wake the screen when the phone was asleep.
+        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null) {
+            android.os.PowerManager.WakeLock wl = pm.newWakeLock(
+                    android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK
+                            | android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP
+                            | android.os.PowerManager.ON_AFTER_RELEASE,
+                    "aistudio:alarm_alert_wake"
+            );
+            wl.acquire(60 * 1000L); // auto-releases after 60s
+        }
+        android.util.Log.e("AlarmAlertActivity", "[TRACE-A] AlarmAlertActivity onCreate, screen wake requested");
 
         setContentView(R.layout.activity_alarm_alert);
 
